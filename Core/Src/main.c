@@ -1,20 +1,277 @@
 #include "stm32l4xx.h"
 
 #include "FreeRTOS.h"
+#include "semphr.h"
+#include "queue.h"
 #include "task.h"
+#include "timers.h"
+
+#include "tusb.h"
+#include "usb_descriptors.h"
 
 #include "board.h"
 
-/**
- * @brief  Function implementing the defaultTask thread.
- * @param  argument: Not used
- * @retval None
+
+/* Blink pattern
+ * - 250 ms  : device not mounted
+ * - 1000 ms : device mounted
+ * - 2500 ms : device is suspended
  */
-void DefaultTask(void *argument)
+enum  {
+  BLINK_NOT_MOUNTED = 250,
+  BLINK_MOUNTED = 1000,
+  BLINK_SUSPENDED = 2500,
+};
+
+TimerHandle_t blinky_tm;
+
+#define USBD_STACK_SIZE    (3*configMINIMAL_STACK_SIZE/2) * (CFG_TUSB_DEBUG ? 2 : 1)
+#define HID_STACK_SZIE      configMINIMAL_STACK_SIZE
+
+
+
+//--------------------------------------------------------------------+
+// Device callbacks
+//--------------------------------------------------------------------+
+
+// Invoked when device is mounted
+void tud_mount_cb(void)
 {
-  for (;;)
+  xTimerChangePeriod(blinky_tm, pdMS_TO_TICKS(BLINK_MOUNTED), 0);
+}
+
+// Invoked when device is unmounted
+void tud_umount_cb(void)
+{
+  xTimerChangePeriod(blinky_tm, pdMS_TO_TICKS(BLINK_NOT_MOUNTED), 0);
+}
+
+// Invoked when usb bus is suspended
+// remote_wakeup_en : if host allow us  to perform remote wakeup
+// Within 7ms, device must draw an average of current less than 2.5 mA from bus
+void tud_suspend_cb(bool remote_wakeup_en)
+{
+  (void) remote_wakeup_en;
+  xTimerChangePeriod(blinky_tm, pdMS_TO_TICKS(BLINK_SUSPENDED), 0);
+}
+
+// Invoked when usb bus is resumed
+void tud_resume_cb(void)
+{
+  xTimerChangePeriod(blinky_tm, pdMS_TO_TICKS(BLINK_MOUNTED), 0);
+}
+
+//--------------------------------------------------------------------+
+// USB HID
+//--------------------------------------------------------------------+
+
+static void send_hid_report(uint8_t report_id, uint32_t btn)
+{
+  // skip if hid is not ready yet
+  if ( !tud_hid_ready() ) return;
+
+  switch(report_id)
   {
-    vTaskDelay(1000);
+    case REPORT_ID_KEYBOARD:
+    {
+      // use to avoid send multiple consecutive zero report for keyboard
+      static uint8_t has_keyboard_key = false;
+
+      if ( btn )
+      {
+        uint8_t keycode[6] = { 0 };
+        keycode[0] = HID_KEY_A;
+
+        tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
+        has_keyboard_key = true;
+      }else
+      {
+        // send empty key report if previously has key pressed
+        if (has_keyboard_key) tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, NULL);
+        has_keyboard_key = false;
+      }
+    }
+    break;
+
+    case REPORT_ID_MOUSE:
+    {
+      int8_t const delta = 5;
+
+      // no button, right + down, no scroll, no pan
+      tud_hid_mouse_report(REPORT_ID_MOUSE, 0x00, delta, delta, 0, 0);
+    }
+    break;
+
+    case REPORT_ID_CONSUMER_CONTROL:
+    {
+      // use to avoid send multiple consecutive zero report
+      static uint8_t has_consumer_key = false;
+
+      if ( btn )
+      {
+        // volume down
+        uint16_t volume_down = HID_USAGE_CONSUMER_VOLUME_DECREMENT;
+        tud_hid_report(REPORT_ID_CONSUMER_CONTROL, &volume_down, 2);
+        has_consumer_key = true;
+      }else
+      {
+        // send empty key report (release key) if previously has key pressed
+        uint16_t empty_key = 0;
+        if (has_consumer_key) tud_hid_report(REPORT_ID_CONSUMER_CONTROL, &empty_key, 2);
+        has_consumer_key = false;
+      }
+    }
+    break;
+
+    case REPORT_ID_GAMEPAD:
+    {
+      // use to avoid send multiple consecutive zero report for keyboard
+      static uint8_t has_gamepad_key = false;
+
+      hid_gamepad_report_t report =
+      {
+        .x   = 0, .y = 0, .z = 0, .rz = 0, .rx = 0, .ry = 0,
+        .hat = 0, .buttons = 0
+      };
+
+      if ( btn )
+      {
+        report.hat = GAMEPAD_HAT_UP;
+        report.buttons = GAMEPAD_BUTTON_A;
+        tud_hid_report(REPORT_ID_GAMEPAD, &report, sizeof(report));
+
+        has_gamepad_key = true;
+      }else
+      {
+        report.hat = GAMEPAD_HAT_CENTERED;
+        report.buttons = 0;
+        if (has_gamepad_key) tud_hid_report(REPORT_ID_GAMEPAD, &report, sizeof(report));
+        has_gamepad_key = false;
+      }
+    }
+    break;
+
+    default: break;
+  }
+}
+
+void hid_task(void* param)
+{
+  (void) param;
+
+  while(1)
+  {
+    // Poll every 10ms
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    if ( board_button_read() == 0){
+      // Remote wakeup
+      if ( tud_suspended())
+      {
+        // Wake up host if we are in suspend mode
+        // and REMOTE_WAKEUP feature is enabled by host
+        tud_remote_wakeup();
+      }
+      else
+      {
+        // Send the 1st of report chain, the rest will be sent by tud_hid_report_complete_cb()
+        send_hid_report(REPORT_ID_KEYBOARD, 1);
+      }
+    }
+
+  }
+}
+
+// Invoked when sent REPORT successfully to host
+// Application can use this to send the next report
+// Note: For composite reports, report[0] is report ID
+void tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint8_t len)
+{
+  (void) instance;
+  (void) len;
+
+  uint8_t next_report_id = report[0] + 1;
+
+  if (next_report_id < REPORT_ID_COUNT)
+  {
+    send_hid_report(next_report_id, board_button_read());
+  }
+}
+
+
+// Invoked when received GET_REPORT control request
+// Application must fill buffer report's content and return its length.
+// Return zero will cause the stack to STALL request
+uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t* buffer, uint16_t reqlen)
+{
+  // TODO not Implemented
+  (void) instance;
+  (void) report_id;
+  (void) report_type;
+  (void) buffer;
+  (void) reqlen;
+
+  return 0;
+}
+
+// Invoked when received SET_REPORT control request or
+// received data on OUT endpoint ( Report ID = 0, Type = 0 )
+void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t const* buffer, uint16_t bufsize)
+{
+  (void) instance;
+
+  if (report_type == HID_REPORT_TYPE_OUTPUT)
+  {
+    // Set keyboard LED e.g Capslock, Numlock etc...
+    if (report_id == REPORT_ID_KEYBOARD)
+    {
+      // bufsize should be (at least) 1
+      if ( bufsize < 1 ) return;
+
+      uint8_t const kbd_leds = buffer[0];
+
+      if (kbd_leds & KEYBOARD_LED_CAPSLOCK)
+      {
+        // Capslock On: disable blink, turn led on
+        xTimerStop(blinky_tm, portMAX_DELAY);
+        board_led_write(true);
+      }else
+      {
+        // Caplocks Off: back to normal blink
+        board_led_write(false);
+        xTimerStart(blinky_tm, portMAX_DELAY);
+      }
+    }
+  }
+}
+
+//--------------------------------------------------------------------+
+// BLINKING TASK
+//--------------------------------------------------------------------+
+void led_blinky_cb(TimerHandle_t xTimer)
+{
+  (void) xTimer;
+  static uint8_t led_state = false;
+
+  board_led_write(led_state);
+  led_state = 1 - led_state; // toggle
+}
+
+// USB Device Driver task
+// This top level thread process all usb events and invoke callbacks
+void usb_device_task(void* param)
+{
+  (void) param;
+
+  // This should be called after scheduler/kernel is started.
+  // Otherwise it could cause kernel issue since USB IRQ handler does use RTOS queue API.
+  tusb_init();
+
+  // RTOS forever loop
+  while (1)
+  {
+    // tinyusb device task
+    tud_task();
   }
 }
 
@@ -22,12 +279,14 @@ int main(void)
 {
   board_init();
 
-  xTaskCreate(DefaultTask,              /* Function that implements the task. */
-              "NAME",                   /* Text name for the task. */
-              configMINIMAL_STACK_SIZE, /* Stack size in words, not bytes. */
-              (void *)1,                /* Parameter passed into the task. */
-              tskIDLE_PRIORITY,         /* Priority at which the task is created. */
-              NULL);                    /* Used to pass out the created task's handle. */
+  blinky_tm = xTimerCreate(NULL, pdMS_TO_TICKS(BLINK_NOT_MOUNTED), true, NULL, led_blinky_cb);
+  xTimerStart(blinky_tm, 0);
+
+  // Create a task for tinyusb device stack
+  (void) xTaskCreate( usb_device_task, "usbd", USBD_STACK_SIZE, NULL, configMAX_PRIORITIES-1, NULL);
+
+  // Create HID task
+  (void) xTaskCreate( hid_task, "hid", HID_STACK_SZIE, NULL, configMAX_PRIORITIES-2, NULL);
 
   vTaskStartScheduler();
 

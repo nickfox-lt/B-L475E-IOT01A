@@ -3,12 +3,14 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "tusb.h"
+
 /******************************************************************************/
 /*           Cortex-M4 Processor Interruption and Exception Handlers          */
 /******************************************************************************/
 /**
-  * @brief This function handles Non maskable interrupt.
-  */
+ * @brief This function handles Non maskable interrupt.
+ */
 void NMI_Handler(void)
 {
   while (1)
@@ -17,8 +19,8 @@ void NMI_Handler(void)
 }
 
 /**
-  * @brief This function handles Hard fault interrupt.
-  */
+ * @brief This function handles Hard fault interrupt.
+ */
 void HardFault_Handler(void)
 {
   while (1)
@@ -27,8 +29,8 @@ void HardFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Memory management fault.
-  */
+ * @brief This function handles Memory management fault.
+ */
 void MemManage_Handler(void)
 {
   while (1)
@@ -37,8 +39,8 @@ void MemManage_Handler(void)
 }
 
 /**
-  * @brief This function handles Prefetch fault, memory access fault.
-  */
+ * @brief This function handles Prefetch fault, memory access fault.
+ */
 void BusFault_Handler(void)
 {
   while (1)
@@ -47,8 +49,8 @@ void BusFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Undefined instruction or illegal state.
-  */
+ * @brief This function handles Undefined instruction or illegal state.
+ */
 void UsageFault_Handler(void)
 {
   while (1)
@@ -57,11 +59,10 @@ void UsageFault_Handler(void)
 }
 
 /**
-  * @brief This function handles Debug monitor.
-  */
+ * @brief This function handles Debug monitor.
+ */
 void DebugMon_Handler(void)
 {
-
 }
 
 /******************************************************************************/
@@ -71,7 +72,7 @@ void DebugMon_Handler(void)
 /* please refer to the startup file (startup_stm32l4xx.s).                    */
 /******************************************************************************/
 
-void OTG_FS_IRQHandler(void){
-
-
+void OTG_FS_IRQHandler(void)
+{
+  tud_int_handler(0);
 }

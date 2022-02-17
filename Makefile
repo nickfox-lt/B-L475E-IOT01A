@@ -38,6 +38,7 @@ BUILD_DIR = build
 C_SOURCES =  \
 Core/Src/main.c \
 Core/Src/board.c \
+Core/Src/usb_descriptors.c \
 Core/Src/stm32l4xx_it.c \
 Core/Src/freertos_hook.c \
 Core/Src/system_stm32l4xx.c \
@@ -53,8 +54,14 @@ Middlewares/Third_Party/FreeRTOS/Source/stream_buffer.c \
 Middlewares/Third_Party/FreeRTOS/Source/tasks.c \
 Middlewares/Third_Party/FreeRTOS/Source/timers.c \
 Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c \
-Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c
-
+Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c \
+Middlewares/Third_Party/tinyusb/src/tusb.c \
+Middlewares/Third_Party/tinyusb/src/class/hid/hid_device.c \
+Middlewares/Third_Party/tinyusb/src/common/tusb_fifo.c \
+Middlewares/Third_Party/tinyusb/src/portable/st/synopsys/dcd_synopsys.c \
+Middlewares/Third_Party/tinyusb/src/device/usbd.c \
+Middlewares/Third_Party/tinyusb/src/device/usbd_control.c
+ 
 # ASM sources
 ASM_SOURCES =  \
 startup_stm32l475xx.s
@@ -128,8 +135,10 @@ C_INCLUDES =  \
 -IDrivers/CMSIS/Device/ST/STM32L4xx/Include \
 -IDrivers/CMSIS/Include \
 -IMiddlewares/Third_Party/FreeRTOS/Source/include \
--IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F
-
+-IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F \
+-IMiddlewares/Third_Party/tinyusb/src \
+-IMiddlewares/Third_Party/tinyusb/src/class/hid \
+-IMiddlewares/Third_Party/tinyusb/src/portable/st/synopsys
 
 # compile gcc flags
 ASFLAGS = $(MCU) $(AS_DEFS) $(AS_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
