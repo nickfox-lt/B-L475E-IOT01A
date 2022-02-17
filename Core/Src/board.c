@@ -27,6 +27,8 @@
 
 static void board_clock_init(void)
 {
+    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
+    
     LL_FLASH_SetLatency(LL_FLASH_LATENCY_4);
     while (LL_FLASH_GetLatency() != LL_FLASH_LATENCY_4)
     {
@@ -42,7 +44,9 @@ static void board_clock_init(void)
     LL_RCC_MSI_SetRange(LL_RCC_MSIRANGE_6);
     LL_RCC_MSI_SetCalibTrimming(0);
     LL_PWR_EnableBkUpAccess();
-    LL_RCC_LSE_SetDriveCapability(LL_RCC_LSEDRIVE_LOW);
+    LL_RCC_ForceBackupDomainReset();
+    LL_RCC_ReleaseBackupDomainReset();
+    LL_RCC_LSE_SetDriveCapability(LL_RCC_LSEDRIVE_HIGH);
     LL_RCC_LSE_Enable();
 
     /* Wait till LSE is ready */
@@ -97,10 +101,6 @@ void board_init(void)
     LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOF);
     LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOG);
     LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOH);
-
-    /* Enable USB power on Pwrctrl CR2 register */
-    /* Enable Power Clock*/
-    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_PWR);
 
     /* Enable USB power on Pwrctrl CR2 register */
     LL_PWR_EnableVddUSB();
