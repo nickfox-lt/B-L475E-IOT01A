@@ -11,6 +11,7 @@
 
 #include "board.h"
 
+#include <stdio.h>
 
 /* Blink pattern
  * - 250 ms  : device not mounted
@@ -278,6 +279,9 @@ void usb_device_task(void* param)
 int main(void)
 {
   board_init();
+
+  // otherwise it will not print directly, or even error (because the buffer is full)
+  setvbuf(stdout, NULL, _IONBF, 0);
 
   blinky_tm = xTimerCreate(NULL, pdMS_TO_TICKS(BLINK_NOT_MOUNTED), true, NULL, led_blinky_cb);
   xTimerStart(blinky_tm, 0);

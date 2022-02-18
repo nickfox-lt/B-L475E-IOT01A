@@ -22,7 +22,7 @@ TARGET = B-L475E-IOT01A
 # debug build?
 DEBUG = 1
 # optimization
-OPT = -O0
+OPT = -Og
 
 
 #######################################
@@ -36,6 +36,7 @@ BUILD_DIR = build
 ######################################
 # C sources
 C_SOURCES =  \
+Core/Src/syscalls.c \
 Core/Src/main.c \
 Core/Src/board.c \
 Core/Src/usb_descriptors.c \
@@ -46,6 +47,8 @@ Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_ll_utils.c \
 Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_ll_exti.c \
 Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_ll_gpio.c \
 Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_ll_pwr.c \
+Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_ll_usart.c \
+Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_ll_rcc.c \
 Middlewares/Third_Party/FreeRTOS/Source/croutine.c \
 Middlewares/Third_Party/FreeRTOS/Source/event_groups.c \
 Middlewares/Third_Party/FreeRTOS/Source/list.c \
